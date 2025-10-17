@@ -52,11 +52,12 @@ public class TTSManager {
 
     /**
      * Converts text to speech - tries Speechify first, then falls back to Google TTS (FREE).
+     * @return Path to the generated TTS audio file, or null if failed
      */
-    public void speak(String text) throws IOException, InterruptedException {
+    public String speak(String text) throws IOException, InterruptedException {
         if (text == null || text.trim().isEmpty()) {
             System.out.println("⚠️ Empty text provided for TTS");
-            return;
+            return null;
         }
 
         System.out.println("\n🔊 Starting TTS for: " + text);
@@ -64,6 +65,7 @@ public class TTSManager {
 
         boolean success = false;
         Exception lastException = null;
+        String generatedFilePath = null;
 
         // Try Speechify API endpoints
         for (String endpoint : SPEECHIFY_ENDPOINTS) {
@@ -74,6 +76,7 @@ public class TTSManager {
                 if (trySpeechifyTTS(text, endpoint)) {
                     System.out.println("✅ Speechify TTS successful!");
                     success = true;
+                    generatedFilePath = outputDirectory.resolve("output.mp3").toString();
                     break;
                 }
             } catch (Exception e) {
@@ -88,7 +91,7 @@ public class TTSManager {
             System.out.println("🔄 Speechify failed - using FREE Google TTS fallback...");
             logger.info("Falling back to Google TTS");
             try {
-                useGoogleTTS(text);
+                generatedFilePath = useGoogleTTS(text);
                 System.out.println("✅ Google TTS successful!");
                 success = true;
             } catch (Exception e) {
@@ -105,6 +108,8 @@ public class TTSManager {
             String errorMsg = lastException != null ? lastException.getMessage() : "Unknown error";
             throw new IOException("TTS conversion failed: " + errorMsg, lastException);
         }
+        
+        return generatedFilePath;
     }
 
     /**
@@ -172,9 +177,21 @@ public class TTSManager {
     /**
      * Google TTS fallback - FREE and reliable!
      * Uses Google Translate's text-to-speech API (no key needed).
+     * @return Path to the generated audio file
      */
-    private void useGoogleTTS(String text) throws IOException, InterruptedException {
+    private String useGoogleTTS(String text) throws IOException, InterruptedException {
         Path outputFile = outputDirectory.resolve("tts_output.mp3");
+
+        // ⚠️ IMPORTANT: Delete old file first to prevent audio accumulation
+        try {
+            if (Files.exists(outputFile)) {
+                Files.delete(outputFile);
+                System.out.println("   🗑️ Deleted old TTS file to prevent accumulation");
+                logger.info("Deleted old TTS file: {}", outputFile);
+            }
+        } catch (IOException e) {
+            logger.warn("Could not delete old TTS file: {}", e.getMessage());
+        }
 
         try {
             String encodedText = URLEncoder.encode(text, "UTF-8");
@@ -202,6 +219,7 @@ public class TTSManager {
                 System.out.println("   Playing audio...");
                 audioPlayer.play(outputFile.toString());
                 System.out.println("   ✅ Playback completed");
+                return outputFile.toAbsolutePath().toString();
             } else {
                 Files.deleteIfExists(outputFile);
                 throw new IOException("Google TTS failed with status: " + response.statusCode());

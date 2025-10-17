@@ -21,6 +21,7 @@ public class BilluUI {
     private SpeechRecorder recorder;
     private Translator translator;
     private TTSManager ttsManager;
+    private DatabaseManager dbManager;
     private volatile boolean isProcessing = false;
 
     // Animation states
@@ -33,6 +34,7 @@ public class BilluUI {
         recorder = new SpeechRecorder();
         translator = new Translator();
         ttsManager = new TTSManager();
+        dbManager = new DatabaseManager();
     }
 
     public void createAndShowGUI() {
@@ -127,6 +129,8 @@ public class BilluUI {
 
     private void handleSpacePressed() {
         logger.info("Space key pressed - starting recording");
+        // Clear previous output for new recording
+        clearOutput();
         updateUI(LISTENING_STATE, "🎙️ Listening... (Recording)", null);
         recorder.startRecording();
     }
@@ -151,32 +155,59 @@ public class BilluUI {
     }
 
     private void processRecording(String filePath) {
+        String englishText = null;
+        String bhojpuriText = null;
+        String ttsPath = null;
+        long audioSize = 0;
+        
         try {
             logger.info("Processing recording from: {}", filePath);
             
+            // Get audio file size
+            java.io.File audioFile = new java.io.File(filePath);
+            audioSize = audioFile.length();
+            
             // Step 1: Transcribe to English
             logger.info("Transcribing audio to English text...");
-            String englishText = translator.transcribeToEnglish(filePath);
+            final String transcribedEnglish = translator.transcribeToEnglish(filePath);
+            englishText = transcribedEnglish;
             logger.info("Transcribed text: {}", englishText);
             
             SwingUtilities.invokeLater(() -> 
-                appendOutput("English: " + englishText)
+                appendOutput("English: " + transcribedEnglish)
             );
 
             // Step 2: Translate to Bhojpuri
             logger.info("Translating English to Bhojpuri...");
-            String bhojpuriText = translator.translateToBhojpuri(englishText);
+            final String translatedBhojpuri = translator.translateToBhojpuri(englishText);
+            bhojpuriText = translatedBhojpuri;
             logger.info("Translated text: {}", bhojpuriText);
             
             SwingUtilities.invokeLater(() -> {
-                appendOutput("Bhojpuri: " + bhojpuriText);
+                appendOutput("Bhojpuri: " + translatedBhojpuri);
                 updateUI(SPEAKING_STATE, "🔊 Speaking...", null);
             });
 
             // Step 3: Convert to speech and play
             logger.info("Converting Bhojpuri text to speech...");
-            ttsManager.speak(bhojpuriText);
+            ttsPath = ttsManager.speak(bhojpuriText);
             logger.info("Speech playback completed");
+
+            // Step 4: Save to database
+            final String finalEnglish = englishText;
+            final String finalBhojpuri = bhojpuriText;
+            final String finalTtsPath = ttsPath;
+            final long finalAudioSize = audioSize;
+            
+            int dbId = dbManager.saveTranslation(filePath, finalAudioSize, finalEnglish, 
+                                                  finalBhojpuri, finalTtsPath);
+            
+            if (dbId > 0) {
+                logger.info("💾 Translation saved to database with ID: {}", dbId);
+                SwingUtilities.invokeLater(() -> 
+                    appendOutput("💾 Saved to database (ID: " + dbId + ")")
+                );
+            }
 
             // Reset UI
             SwingUtilities.invokeLater(() -> {
@@ -206,5 +237,9 @@ public class BilluUI {
     private void appendOutput(String text) {
         outputArea.append(text + "\n");
         outputArea.setCaretPosition(outputArea.getDocument().getLength());
+    }
+
+    private void clearOutput() {
+        outputArea.setText("");
     }
 }
