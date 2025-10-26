@@ -1,6 +1,7 @@
 package com.bhojpurri;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ServiceLoader;
 
@@ -33,7 +34,8 @@ public class AudioPlayer {
         System.out.println("\n🔍 Checking audio codec providers:");
         for (AudioFileReader reader : readers) {
             System.out.println("   - " + reader.getClass().getName());
-            if (reader.getClass().getName().contains("Mp3")) {
+            if (reader.getClass().getName().toLowerCase().contains("mp3") || 
+                reader.getClass().getName().toLowerCase().contains("mpeg")) {
                 mp3SpiFound = true;
             }
         }
@@ -117,8 +119,15 @@ public class AudioPlayer {
             logger.info("Audio playback finished successfully");
 
         } catch (UnsupportedAudioFileException e) {
-            logger.error("Unsupported audio file format: {}", filePath, e);
-            throw new RuntimeException("Unsupported audio format: " + e.getMessage(), e);
+            // javax.sound couldn't handle this audio file - try JLayer (pure MP3 playback)
+            logger.warn("javax.sound reported unsupported audio format for {} — trying JLayer fallback", filePath);
+            try {
+                playWithJLayer(audioFile);
+                return;
+            } catch (Exception jlEx) {
+                logger.error("JLayer fallback also failed", jlEx);
+                throw new RuntimeException("Unsupported audio format: " + e.getMessage(), e);
+            }
         } catch (IOException e) {
             logger.error("I/O error during audio playback", e);
             throw new RuntimeException("Audio playback I/O error: " + e.getMessage(), e);
@@ -129,6 +138,20 @@ public class AudioPlayer {
             logger.error("Audio playback interrupted", e);
             Thread.currentThread().interrupt();
             throw new RuntimeException("Audio playback interrupted: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Fallback MP3 playback using JLayer (javazoom.jl.player.Player).
+     * This is used when javax.sound.sampled cannot decode the MP3.
+     */
+    private void playWithJLayer(File audioFile) throws Exception {
+        logger.info("Playing MP3 with JLayer fallback: {}", audioFile.getAbsolutePath());
+        try (FileInputStream fis = new FileInputStream(audioFile)) {
+            javazoom.jl.player.Player player = new javazoom.jl.player.Player(fis);
+            // JLayer playback is blocking until completion
+            player.play();
+            logger.info("JLayer playback finished successfully");
         }
     }
 

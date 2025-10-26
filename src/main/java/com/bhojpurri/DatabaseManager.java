@@ -82,12 +82,14 @@ public class DatabaseManager {
                 "  audio_file_path VARCHAR(500) NOT NULL," +
                 "  audio_file_size BIGINT," +
                 "  english_text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci," +
-                "  bhojpuri_text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci," +
+                "  translated_text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci," +
+                "  target_language VARCHAR(10) DEFAULT 'bho'," +
                 "  tts_file_path VARCHAR(500)," +
                 "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
                 "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
                 "  INDEX idx_created_at (created_at)," +
-                "  INDEX idx_audio_path (audio_file_path(255))" +
+                "  INDEX idx_audio_path (audio_file_path(255))," +
+                "  INDEX idx_language (target_language)" +
                 ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
             
             stmt.executeUpdate(createTranslationsTable);
@@ -117,21 +119,23 @@ public class DatabaseManager {
      * @param audioPath Path to the recorded audio file
      * @param audioSize Size of audio file in bytes
      * @param englishText Transcribed English text
-     * @param bhojpuriText Translated Bhojpuri text
+     * @param translatedText Translated text in target language
+     * @param targetLanguage Target language code (e.g., "bho", "hi", "es")
      * @param ttsPath Path to generated TTS audio file
      * @return The ID of the inserted record, or -1 if failed
      */
     public int saveTranslation(String audioPath, long audioSize, String englishText, 
-                               String bhojpuriText, String ttsPath) {
+                               String translatedText, String targetLanguage, String ttsPath) {
         String sql = "INSERT INTO translations (audio_file_path, audio_file_size, " +
-                    "english_text, bhojpuri_text, tts_file_path) VALUES (?, ?, ?, ?, ?)";
+                    "english_text, translated_text, target_language, tts_file_path) VALUES (?, ?, ?, ?, ?, ?)";
         
         try (PreparedStatement pstmt = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             pstmt.setString(1, audioPath);
             pstmt.setLong(2, audioSize);
             pstmt.setString(3, englishText);
-            pstmt.setString(4, bhojpuriText);
-            pstmt.setString(5, ttsPath);
+            pstmt.setString(4, translatedText);
+            pstmt.setString(5, targetLanguage);
+            pstmt.setString(6, ttsPath);
             
             int affectedRows = pstmt.executeUpdate();
             
@@ -139,7 +143,7 @@ public class DatabaseManager {
                 try (ResultSet generatedKeys = pstmt.getGeneratedKeys()) {
                     if (generatedKeys.next()) {
                         int id = generatedKeys.getInt(1);
-                        logger.info("💾 Saved translation to database (ID: {})", id);
+                        logger.info("💾 Saved translation to database (ID: {}, Language: {})", id, targetLanguage);
                         updateDailyStats(audioSize);
                         return id;
                     }
@@ -149,6 +153,21 @@ public class DatabaseManager {
             logger.error("❌ Failed to save translation to database", e);
         }
         return -1;
+    }
+
+    /**
+     * Save a complete translation record to database (backward compatibility - defaults to Bhojpuri)
+     * 
+     * @param audioPath Path to the recorded audio file
+     * @param audioSize Size of audio file in bytes
+     * @param englishText Transcribed English text
+     * @param translatedText Translated text
+     * @param ttsPath Path to generated TTS audio file
+     * @return The ID of the inserted record, or -1 if failed
+     */
+    public int saveTranslation(String audioPath, long audioSize, String englishText, 
+                               String translatedText, String ttsPath) {
+        return saveTranslation(audioPath, audioSize, englishText, translatedText, "bho", ttsPath);
     }
 
     /**

@@ -16,6 +16,10 @@ public class MainApp {
     public static void main(String[] args) {
         logger.info("Starting Bhojpurri Application...");
         
+        // Load environment variables from .env file
+        EnvLoader.load();
+        logger.info("Environment variables loaded");
+        
         // Set look and feel to system default for better native appearance
         try {
             javax.swing.UIManager.setLookAndFeel(
