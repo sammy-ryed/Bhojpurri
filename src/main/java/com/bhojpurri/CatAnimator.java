@@ -32,7 +32,8 @@ public class CatAnimator {
         IDLE,       // Breathing/waiting animation
         LISTENING,  // Cat covering ears (when recording)
         THINKING,   // Processing animation
-        SPEAKING    // Mouth moving (during speech)
+        SPEAKING,   // Mouth moving (during speech)
+        ERROR       // Dead animation (when error occurs)
     }
     
     // Sprite directory paths
@@ -69,9 +70,10 @@ public class CatAnimator {
         // Map animation states to sprite folder patterns
         Map<AnimationState, String> spritePatterns = new HashMap<>();
         spritePatterns.put(AnimationState.IDLE, "Idle");
-        spritePatterns.put(AnimationState.LISTENING, "Hurt");  // Paw over ear!
+        spritePatterns.put(AnimationState.LISTENING, "Fall");  // Falling/ducking animation when listening
         spritePatterns.put(AnimationState.THINKING, "Walk");
         spritePatterns.put(AnimationState.SPEAKING, "Jump");
+        spritePatterns.put(AnimationState.ERROR, "Dead");  // Dead animation for errors
         
         // Load each animation
         for (Map.Entry<AnimationState, String> entry : spritePatterns.entrySet()) {

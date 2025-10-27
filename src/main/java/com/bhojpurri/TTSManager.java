@@ -257,10 +257,12 @@ public class TTSManager {
             String encodedText = URLEncoder.encode(text, "UTF-8");
             // Map language code to Google TTS supported code
             String googleLangCode = mapLanguageCodeForGoogleTTS(languageCode);
-            String url = "https://translate.google.com/translate_tts?ie=UTF-8&q=" + encodedText + "&tl=" + googleLangCode + "&client=tw-ob";
+            // Add ttsspeed parameter: 0.24 is normal, lower is slower (0.1-0.24 range)
+            // Using 0.1 for VERY slow, crystal clear speech
+            String url = "https://translate.google.com/translate_tts?ie=UTF-8&q=" + encodedText + "&tl=" + googleLangCode + "&ttsspeed=0.1&client=tw-ob";
             
             System.out.println("   Google TTS URL: " + url);
-            System.out.println("   Language: " + languageCode + " (mapped to: " + googleLangCode + ")");
+            System.out.println("   Language: " + languageCode + " (mapped to: " + googleLangCode + ") - Speed: VERY Slow (0.1)");
             logger.info("Using Google TTS with language: {} (mapped to: {})", languageCode, googleLangCode);
 
             HttpRequest request = HttpRequest.newBuilder()

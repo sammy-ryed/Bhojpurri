@@ -14,7 +14,20 @@ public class MainApp {
     private static final Logger logger = LoggerFactory.getLogger(MainApp.class);
 
     public static void main(String[] args) {
+        // Force UTF-8 encoding for the entire JVM
+        System.setProperty("file.encoding", "UTF-8");
+        System.setProperty("console.encoding", "UTF-8");
+        
         logger.info("Starting Bhojpurri Application...");
+        
+        // Set UTF-8 encoding for console output (fixes Urdu, Arabic, etc.)
+        try {
+            System.setOut(new java.io.PrintStream(System.out, true, "UTF-8"));
+            System.setErr(new java.io.PrintStream(System.err, true, "UTF-8"));
+            System.out.println("✅ Console encoding set to UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            logger.warn("Could not set UTF-8 console encoding: {}", e.getMessage());
+        }
         
         // Load environment variables from .env file
         EnvLoader.load();

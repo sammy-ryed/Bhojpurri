@@ -25,6 +25,10 @@ public class BilluUI {
     private DatabaseManager dbManager;
     private CatAnimator catAnimator; // Animated cat sprite handler
     private volatile boolean isProcessing = false;
+    private String lastTTSFilePath = null; // Store last played TTS file
+    private JButton replayButton; // Button to replay last audio
+    private JButton historyButton; // Button to show history
+    private JButton resetDbButton; // Button to reset database
     
     // Language options for translation
     private static class LanguageOption {
@@ -216,6 +220,36 @@ public class BilluUI {
         
         rightPanel.add(topRightPanel, BorderLayout.NORTH);
         rightPanel.add(scrollPane, BorderLayout.CENTER);
+        
+        // Bottom buttons panel for right side
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        buttonsPanel.setBackground(new Color(240, 248, 255));
+        
+        // Replay button
+        replayButton = new JButton("🔊 Replay Last");
+        replayButton.setFont(new Font("SansSerif", Font.BOLD, 12));
+        replayButton.setEnabled(false); // Disabled until first TTS plays
+        replayButton.setToolTipText("Replay the last translation audio");
+        replayButton.addActionListener(e -> replayLastAudio());
+        
+        // History button
+        historyButton = new JButton("📜 History");
+        historyButton.setFont(new Font("SansSerif", Font.BOLD, 12));
+        historyButton.setToolTipText("View translation history");
+        historyButton.addActionListener(e -> showHistoryDialog());
+        
+        // Reset database button
+        resetDbButton = new JButton("🗑️ Reset DB");
+        resetDbButton.setFont(new Font("SansSerif", Font.BOLD, 12));
+        resetDbButton.setToolTipText("Clear all database records");
+        resetDbButton.setForeground(Color.RED);
+        resetDbButton.addActionListener(e -> resetDatabase());
+        
+        buttonsPanel.add(replayButton);
+        buttonsPanel.add(historyButton);
+        buttonsPanel.add(resetDbButton);
+        
+        rightPanel.add(buttonsPanel, BorderLayout.SOUTH);
 
         // Bottom panel - Instructions
         JPanel instructionPanel = new JPanel();
@@ -287,6 +321,12 @@ public class BilluUI {
                 logger.error("Error during processing", ex);
                 SwingUtilities.invokeLater(() -> {
                     updateUI("⚠️ Error occurred", "Error: " + ex.getMessage());
+                    
+                    // Set cat to ERROR state
+                    if (catAnimator != null) {
+                        catAnimator.setState(CatAnimator.AnimationState.ERROR);
+                    }
+                    
                     isProcessing = false;
                 });
                 return null;
@@ -327,6 +367,16 @@ public class BilluUI {
             translatedText = translated;
             logger.info("Translated text: {}", translatedText);
             
+            // For Urdu/Arabic/Hebrew, show note about display
+            if (targetLangCode.equals("ur")) {
+                // Note: Urdu is being spoken correctly, but displaying romanized version
+                System.out.println("\n📝 " + targetLangName + " (Urdu script): " + translated);
+                System.out.println("   ℹ️ Note: Urdu text is displayed above (may not render in console)");
+                System.out.println("   ℹ️ The audio will speak Urdu correctly!");
+            } else {
+                System.out.println("\n📝 " + targetLangName + ": " + translated);
+            }
+            
             final String langName = targetLangName; // For lambda capture
             SwingUtilities.invokeLater(() -> {
                 appendOutput(langName + ": " + translated);
@@ -340,13 +390,21 @@ public class BilluUI {
 
             // Step 3: Convert to speech and play
             logger.info("Converting {} text to speech...", targetLangName);
-            ttsPath = ttsManager.speak(translatedText, targetLangCode);
+            final String finalTtsPath = ttsManager.speak(translatedText, targetLangCode);
+            ttsPath = finalTtsPath;
+            lastTTSFilePath = finalTtsPath; // Store for replay functionality
             logger.info("Speech playback completed");
+            
+            // Enable replay button after first TTS
+            SwingUtilities.invokeLater(() -> {
+                if (replayButton != null && finalTtsPath != null) {
+                    replayButton.setEnabled(true);
+                }
+            });
 
             // Step 4: Save to database
             final String finalEnglish = englishText;
             final String finalTranslated = translatedText;
-            final String finalTtsPath = ttsPath;
             final long finalAudioSize = audioSize;
             final String finalLangCode = targetLangCode;
             
@@ -379,9 +437,9 @@ public class BilluUI {
                 updateUI("⚠️ Error: " + ex.getMessage(), 
                     "Failed to process. Please try again.");
                 
-                // Reset cat to IDLE on error
+                // Set cat to ERROR state on error
                 if (catAnimator != null) {
-                    catAnimator.setState(CatAnimator.AnimationState.IDLE);
+                    catAnimator.setState(CatAnimator.AnimationState.ERROR);
                 }
                 
                 isProcessing = false;
@@ -400,6 +458,196 @@ public class BilluUI {
     private void appendOutput(String text) {
         outputArea.append(text + "\n");
         outputArea.setCaretPosition(outputArea.getDocument().getLength());
+    }
+    
+    /**
+     * Replay the last played TTS audio
+     */
+    private void replayLastAudio() {
+        if (lastTTSFilePath == null) {
+            JOptionPane.showMessageDialog(frame, 
+                "No audio to replay yet!", 
+                "Replay", 
+                JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        
+        CompletableFuture.runAsync(() -> {
+            try {
+                SwingUtilities.invokeLater(() -> {
+                    appendOutput("🔊 Replaying last audio...");
+                    if (catAnimator != null) {
+                        catAnimator.setState(CatAnimator.AnimationState.SPEAKING);
+                    }
+                });
+                
+                AudioPlayer audioPlayer = new AudioPlayer();
+                audioPlayer.play(lastTTSFilePath);
+                
+                SwingUtilities.invokeLater(() -> {
+                    appendOutput("✅ Replay complete!");
+                    if (catAnimator != null) {
+                        catAnimator.setState(CatAnimator.AnimationState.IDLE);
+                    }
+                });
+            } catch (Exception e) {
+                logger.error("Failed to replay audio", e);
+                SwingUtilities.invokeLater(() -> {
+                    appendOutput("❌ Replay failed: " + e.getMessage());
+                    if (catAnimator != null) {
+                        catAnimator.setState(CatAnimator.AnimationState.ERROR);
+                    }
+                });
+            }
+        });
+    }
+    
+    /**
+     * Show translation history dialog
+     */
+    private void showHistoryDialog() {
+        JDialog historyDialog = new JDialog(frame, "📜 Translation History", true);
+        historyDialog.setSize(900, 500);
+        historyDialog.setLocationRelativeTo(frame);
+        
+        // Get all translations from database
+        java.util.List<DatabaseManager.TranslationRecord> records = dbManager.getAllTranslations();
+        
+        if (records.isEmpty()) {
+            JLabel emptyLabel = new JLabel("No translations yet!", SwingConstants.CENTER);
+            emptyLabel.setFont(new Font("SansSerif", Font.PLAIN, 16));
+            historyDialog.add(emptyLabel);
+            historyDialog.setVisible(true);
+            return;
+        }
+        
+        // Create table model
+        String[] columnNames = {"ID", "Date/Time", "English", "Translation", "Language", "Actions"};
+        Object[][] data = new Object[records.size()][6];
+        
+        for (int i = 0; i < records.size(); i++) {
+            DatabaseManager.TranslationRecord rec = records.get(i);
+            data[i][0] = rec.id;
+            data[i][1] = rec.createdAt.toString().substring(0, 19); // Format timestamp
+            data[i][2] = truncate(rec.englishText, 30);
+            data[i][3] = truncate(rec.translatedText, 30);
+            data[i][4] = rec.targetLanguage;
+            data[i][5] = "▶️ Play";
+        }
+        
+        JTable table = new JTable(data, columnNames) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 5; // Only Actions column clickable
+            }
+        };
+        
+        table.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        table.setRowHeight(30);
+        table.getColumnModel().getColumn(0).setPreferredWidth(40);
+        table.getColumnModel().getColumn(1).setPreferredWidth(140);
+        table.getColumnModel().getColumn(2).setPreferredWidth(200);
+        table.getColumnModel().getColumn(3).setPreferredWidth(200);
+        table.getColumnModel().getColumn(4).setPreferredWidth(80);
+        table.getColumnModel().getColumn(5).setPreferredWidth(80);
+        
+        // Add mouse listener for play button
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                int row = table.rowAtPoint(evt.getPoint());
+                int col = table.columnAtPoint(evt.getPoint());
+                
+                if (col == 5 && row >= 0) { // Actions column clicked
+                    DatabaseManager.TranslationRecord rec = records.get(row);
+                    playHistoryAudio(rec);
+                }
+            }
+        });
+        
+        JScrollPane scrollPane = new JScrollPane(table);
+        
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(scrollPane, BorderLayout.CENTER);
+        
+        JLabel infoLabel = new JLabel("Click ▶️ to play audio • Total: " + records.size() + " translations");
+        infoLabel.setFont(new Font("SansSerif", Font.ITALIC, 12));
+        infoLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        panel.add(infoLabel, BorderLayout.SOUTH);
+        
+        historyDialog.add(panel);
+        historyDialog.setVisible(true);
+    }
+    
+    /**
+     * Play audio from history record
+     */
+    private void playHistoryAudio(DatabaseManager.TranslationRecord record) {
+        if (record.ttsFilePath == null || record.ttsFilePath.isEmpty()) {
+            JOptionPane.showMessageDialog(frame, 
+                "No TTS audio available for this record", 
+                "Play Audio", 
+                JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        
+        CompletableFuture.runAsync(() -> {
+            try {
+                SwingUtilities.invokeLater(() -> {
+                    appendOutput("🔊 Playing history audio (ID: " + record.id + ")...");
+                    if (catAnimator != null) {
+                        catAnimator.setState(CatAnimator.AnimationState.SPEAKING);
+                    }
+                });
+                
+                AudioPlayer audioPlayer = new AudioPlayer();
+                audioPlayer.play(record.ttsFilePath);
+                
+                SwingUtilities.invokeLater(() -> {
+                    appendOutput("✅ Playback complete!");
+                    if (catAnimator != null) {
+                        catAnimator.setState(CatAnimator.AnimationState.IDLE);
+                    }
+                });
+            } catch (Exception e) {
+                logger.error("Failed to play history audio", e);
+                SwingUtilities.invokeLater(() -> {
+                    appendOutput("❌ Playback failed: " + e.getMessage());
+                    if (catAnimator != null) {
+                        catAnimator.setState(CatAnimator.AnimationState.ERROR);
+                    }
+                });
+            }
+        });
+    }
+    
+    /**
+     * Reset database - clear all data
+     */
+    private void resetDatabase() {
+        int confirm = JOptionPane.showConfirmDialog(frame,
+            "⚠️ This will DELETE ALL translation records!\n\nAre you sure?",
+            "Reset Database",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+        
+        if (confirm == JOptionPane.YES_OPTION) {
+            dbManager.resetDatabase();
+            appendOutput("🗑️ Database reset - all records deleted");
+            JOptionPane.showMessageDialog(frame, 
+                "Database has been reset successfully!", 
+                "Reset Complete", 
+                JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+    
+    /**
+     * Truncate text for display
+     */
+    private String truncate(String text, int maxLength) {
+        if (text == null) return "";
+        if (text.length() <= maxLength) return text;
+        return text.substring(0, maxLength) + "...";
     }
 
     private void clearOutput() {

@@ -10,7 +10,6 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
 import javax.sound.sampled.DataLine;
-import javax.sound.sampled.LineEvent;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.sound.sampled.spi.AudioFileReader;
@@ -67,7 +66,19 @@ public class AudioPlayer {
         }
 
         logger.info("Playing audio file: {} ({} bytes)", filePath, audioFile.length());
+        
+        // For MP3 files, always use JLayer for best compatibility
+        if (filePath.toLowerCase().endsWith(".mp3")) {
+            try {
+                playWithJLayer(audioFile);
+                return;
+            } catch (Exception e) {
+                logger.error("JLayer MP3 playback failed", e);
+                throw new RuntimeException("MP3 playback failed: " + e.getMessage(), e);
+            }
+        }
 
+        // For WAV files, use javax.sound
         try {
             // Stop any currently playing audio
             stopCurrentPlayback();
@@ -97,61 +108,108 @@ public class AudioPlayer {
             currentClip = (Clip) AudioSystem.getLine(info);
             currentClip.open(audioStream);
 
-            // Add listener for completion
-            currentClip.addLineListener(event -> {
-                if (event.getType() == LineEvent.Type.STOP) {
-                    logger.debug("Audio playback completed");
-                }
-            });
-
-            // Start playback
+            // Start playback immediately
             currentClip.start();
             logger.info("Audio playback started");
 
-            // Wait for playback to complete
-            Thread.sleep(currentClip.getMicrosecondLength() / 1000);
+            // Drain ensures all data is played before continuing
+            currentClip.drain();
+            
+            // Wait a bit after draining to ensure audio buffer is fully played
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
 
             // Cleanup
-            currentClip.drain();
+            currentClip.stop();
             currentClip.close();
             audioStream.close();
             
             logger.info("Audio playback finished successfully");
 
         } catch (UnsupportedAudioFileException e) {
-            // javax.sound couldn't handle this audio file - try JLayer (pure MP3 playback)
-            logger.warn("javax.sound reported unsupported audio format for {} — trying JLayer fallback", filePath);
-            try {
-                playWithJLayer(audioFile);
-                return;
-            } catch (Exception jlEx) {
-                logger.error("JLayer fallback also failed", jlEx);
-                throw new RuntimeException("Unsupported audio format: " + e.getMessage(), e);
-            }
+            logger.error("Unsupported audio format", e);
+            throw new RuntimeException("Unsupported audio format: " + e.getMessage(), e);
         } catch (IOException e) {
             logger.error("I/O error during audio playback", e);
             throw new RuntimeException("Audio playback I/O error: " + e.getMessage(), e);
         } catch (LineUnavailableException e) {
             logger.error("Audio line unavailable", e);
             throw new RuntimeException("Cannot access audio output: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            logger.error("Audio playback interrupted", e);
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Audio playback interrupted: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Fallback MP3 playback using JLayer (javazoom.jl.player.Player).
-     * This is used when javax.sound.sampled cannot decode the MP3.
+     * Fallback MP3 playback using JLayer AdvancedPlayer with playback events.
+     * This is used for all MP3 files for best compatibility.
      */
     private void playWithJLayer(File audioFile) throws Exception {
-        logger.info("Playing MP3 with JLayer fallback: {}", audioFile.getAbsolutePath());
-        try (FileInputStream fis = new FileInputStream(audioFile)) {
-            javazoom.jl.player.Player player = new javazoom.jl.player.Player(fis);
-            // JLayer playback is blocking until completion
+        logger.info("Playing MP3 with JLayer: {}", audioFile.getAbsolutePath());
+        
+        FileInputStream fis = null;
+        javazoom.jl.player.advanced.AdvancedPlayer player = null;
+        
+        try {
+            fis = new FileInputStream(audioFile);
+            player = new javazoom.jl.player.advanced.AdvancedPlayer(fis);
+            
+            System.out.println("🔊 Starting JLayer playback...");
+            
+            // Track if playback completed
+            final boolean[] playbackComplete = {false};
+            final int[] totalFrames = {0};
+            
+            // Add playback listener to track when playback actually finishes
+            player.setPlayBackListener(new javazoom.jl.player.advanced.PlaybackListener() {
+                @Override
+                public void playbackStarted(javazoom.jl.player.advanced.PlaybackEvent evt) {
+                    System.out.println("   ▶️ Playback started at frame " + evt.getFrame());
+                }
+                
+                @Override
+                public void playbackFinished(javazoom.jl.player.advanced.PlaybackEvent evt) {
+                    totalFrames[0] = evt.getFrame();
+                    playbackComplete[0] = true;
+                    System.out.println("   ⏹️ Playback finished - decoded " + evt.getFrame() + " frames");
+                }
+            });
+            
+            // Small delay before starting to let sound system initialize
+            // This prevents cutting the first syllable
+            Thread.sleep(150);
+            
+            // Play the entire file - this blocks until decoding is complete
             player.play();
+            
+            // Wait for the playback listener to confirm completion
+            Thread.sleep(100);
+            
+            if (!playbackComplete[0]) {
+                logger.warn("⚠️ Playback listener did not fire - waiting additional time");
+                // Give it more time if listener didn't fire
+                Thread.sleep(500);
+            }
+            
+            System.out.println("✅ JLayer playback finished (frames=" + totalFrames[0] + ")");
             logger.info("JLayer playback finished successfully");
+            
+            // CRITICAL: Extended delay to ensure sound card buffers are completely flushed
+            // Without this, the last word/syllable gets cut off
+            Thread.sleep(1000);
+            
+        } finally {
+            if (player != null) {
+                player.close();
+            }
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (Exception e) {
+                    // Ignore
+                }
+            }
         }
     }
 

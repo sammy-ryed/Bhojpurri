@@ -1,4 +1,7 @@
 @echo off
+REM Set console to UTF-8 to properly display Urdu, Arabic, Hindi, etc.
+chcp 65001 >nul
+
 echo ========================================
 echo   Bhojpurri - Billu the Cat
 echo   Starting application...

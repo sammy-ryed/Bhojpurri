@@ -7,6 +7,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,6 +97,9 @@ public class DatabaseManager {
             stmt.executeUpdate(createTranslationsTable);
             logger.info("📋 Table 'translations' created/verified");
             
+            // Migrate existing table - add missing columns if they don't exist
+            migrateTranslationsTable(stmt);
+            
             // Stats table for tracking usage
             String createStatsTable = 
                 "CREATE TABLE IF NOT EXISTS usage_stats (" +
@@ -111,6 +116,123 @@ public class DatabaseManager {
             stmt.executeUpdate(createStatsTable);
             logger.info("📊 Table 'usage_stats' created/verified");
         }
+    }
+    
+    /**
+     * Migrate existing translations table to add missing columns
+     */
+    private void migrateTranslationsTable(Statement stmt) {
+        try {
+            // Check if translated_text column exists
+            ResultSet rs = stmt.executeQuery(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = 'bhojpuri_billa' " +
+                "AND TABLE_NAME = 'translations' " +
+                "AND COLUMN_NAME = 'translated_text'"
+            );
+            
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                // Column doesn't exist, add it
+                stmt.executeUpdate(
+                    "ALTER TABLE translations ADD COLUMN translated_text " +
+                    "TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci AFTER english_text"
+                );
+                logger.info("✅ Added 'translated_text' column to translations table");
+            }
+            rs.close();
+            
+            // Check if target_language column exists
+            rs = stmt.executeQuery(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = 'bhojpuri_billa' " +
+                "AND TABLE_NAME = 'translations' " +
+                "AND COLUMN_NAME = 'target_language'"
+            );
+            
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                // Column doesn't exist, add it
+                stmt.executeUpdate(
+                    "ALTER TABLE translations ADD COLUMN target_language " +
+                    "VARCHAR(10) DEFAULT 'bho' AFTER translated_text"
+                );
+                logger.info("✅ Added 'target_language' column to translations table");
+            }
+            rs.close();
+            
+        } catch (SQLException e) {
+            logger.warn("⚠️ Migration check failed (table might not exist yet): " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Clear all data from database tables (fresh start)
+     */
+    public void resetDatabase() {
+        try (Statement stmt = connection.createStatement()) {
+            // Delete all records
+            stmt.executeUpdate("DELETE FROM translations");
+            stmt.executeUpdate("DELETE FROM usage_stats");
+            
+            // Reset auto-increment counter to 1
+            stmt.executeUpdate("ALTER TABLE translations AUTO_INCREMENT = 1");
+            stmt.executeUpdate("ALTER TABLE usage_stats AUTO_INCREMENT = 1");
+            
+            logger.info("🗑️ Database reset - all data cleared and IDs reset to 1");
+            System.out.println("✅ Database reset successfully! IDs reset to 1.");
+        } catch (SQLException e) {
+            logger.error("❌ Failed to reset database", e);
+            System.err.println("❌ Database reset failed: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get all translation records ordered by newest first
+     */
+    public List<TranslationRecord> getAllTranslations() {
+        List<TranslationRecord> records = new ArrayList<>();
+        String sql = "SELECT id, audio_file_path, audio_file_size, english_text, " +
+                    "translated_text, target_language, tts_file_path, created_at " +
+                    "FROM translations ORDER BY created_at DESC";
+        
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                TranslationRecord record = new TranslationRecord();
+                record.id = rs.getInt("id");
+                record.audioFilePath = rs.getString("audio_file_path");
+                record.audioFileSize = rs.getLong("audio_file_size");
+                record.englishText = rs.getString("english_text");
+                record.translatedText = rs.getString("translated_text");
+                record.targetLanguage = rs.getString("target_language");
+                record.ttsFilePath = rs.getString("tts_file_path");
+                record.createdAt = rs.getTimestamp("created_at");
+                records.add(record);
+            }
+            
+            logger.info("📚 Retrieved {} translation records", records.size());
+            
+        } catch (SQLException e) {
+            logger.error("❌ Failed to retrieve translations", e);
+        }
+        
+        return records;
+    }
+    
+    /**
+     * Translation record data class
+     */
+    public static class TranslationRecord {
+        public int id;
+        public String audioFilePath;
+        public long audioFileSize;
+        public String englishText;
+        public String translatedText;
+        public String targetLanguage;
+        public String ttsFilePath;
+        public java.sql.Timestamp createdAt;
     }
 
     /**
