@@ -169,6 +169,8 @@ public class TTSManager {
                 Files.delete(outputFile);
                 System.out.println("   🗑️ Deleted old TTS file to prevent accumulation");
                 logger.info("Deleted old TTS file: {}", outputFile);
+                // Wait to ensure file system updates
+                Thread.sleep(100);
             }
         } catch (IOException e) {
             logger.warn("Could not delete old TTS file: {}", e.getMessage());
@@ -186,6 +188,7 @@ public class TTSManager {
             JSONObject voiceSettings = new JSONObject();
             voiceSettings.put("stability", 0.5);      // 0-1, higher = more stable but less expressive
             voiceSettings.put("similarity_boost", 0.75); // 0-1, higher = closer to original voice
+            voiceSettings.put("speed", 0.7);         // 0.25-4.0, 1.0 is normal, 0.7 is slower for learners
             requestBody.put("voice_settings", voiceSettings);
 
             System.out.println("   ElevenLabs API URL: " + endpoint);
@@ -247,6 +250,8 @@ public class TTSManager {
             if (Files.exists(outputFile)) {
                 Files.delete(outputFile);
                 System.out.println("   🗑️ Deleted old TTS file to prevent accumulation");
+                // Wait to ensure file system updates
+                Thread.sleep(100);
                 logger.info("Deleted old TTS file: {}", outputFile);
             }
         } catch (IOException e) {
@@ -259,7 +264,9 @@ public class TTSManager {
             String googleLangCode = mapLanguageCodeForGoogleTTS(languageCode);
             // Add ttsspeed parameter: 0.24 is normal, lower is slower (0.1-0.24 range)
             // Using 0.1 for VERY slow, crystal clear speech
-            String url = "https://translate.google.com/translate_tts?ie=UTF-8&q=" + encodedText + "&tl=" + googleLangCode + "&ttsspeed=0.1&client=tw-ob";
+            // Add cache-busting parameter to prevent old audio from being replayed
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            String url = "https://translate.google.com/translate_tts?ie=UTF-8&q=" + encodedText + "&tl=" + googleLangCode + "&ttsspeed=0.1&client=tw-ob&_=" + timestamp;
             
             System.out.println("   Google TTS URL: " + url);
             System.out.println("   Language: " + languageCode + " (mapped to: " + googleLangCode + ") - Speed: VERY Slow (0.1)");
