@@ -7,14 +7,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,50 +22,31 @@ public class Translator {
     private static final Logger logger = LoggerFactory.getLogger(Translator.class);
     
     // Groq API Configuration (FREE Whisper API)
-    // Prefer environment variable GROQ_API_KEY; fall back to hardcoded value if not set.
-    private static final String GROQ_API_KEY = EnvLoader.get("GROQ_API_KEY", 
-        "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"); // Get from https://console.groq.com/
+    // API credentials must come from local configuration, never source code.
+    private static final String GROQ_API_KEY = EnvLoader.get("GROQ_API_KEY"); // Get from https://console.groq.com/
     private static final String GROQ_WHISPER_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions";
     private static final String GROQ_MODEL = "whisper-large-v3-turbo"; // TURBO model is 8x faster!
     
     // OpenL Translate API Configuration
-    private static final String OPENL_API_KEY = "0877a9d4f9msh08264169aeb9030p1f75d8jsnd78f5a07b348";
+    private static final String OPENL_API_KEY = EnvLoader.get("OPENL_API_KEY");
     private static final String OPENL_HOST = "openl-translate.p.rapidapi.com";
     private static final String TRANSLATE_ENDPOINT = "https://" + OPENL_HOST + "/translate";
     
     private final HttpClient httpClient;
 
     public Translator() {
-        // Create HTTP client with relaxed SSL verification to fix SSL handshake errors
-        HttpClient client;
-        try {
-            // Create a trust manager that accepts all certificates
-            TrustManager[] trustAllCerts = new TrustManager[]{
-                new X509TrustManager() {
-                    public X509Certificate[] getAcceptedIssuers() { return null; }
-                    public void checkClientTrusted(X509Certificate[] certs, String authType) { }
-                    public void checkServerTrusted(X509Certificate[] certs, String authType) { }
-                }
-            };
-            
-            // Install the all-trusting trust manager
-            SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, trustAllCerts, new SecureRandom());
-            
-            client = HttpClient.newBuilder()
-                .connectTimeout(java.time.Duration.ofSeconds(10))  // Reduced from 30s to 10s
-                .sslContext(sslContext)
-                .build();
-                
-            logger.info("HTTP client initialized with SSL workaround for Groq API");
-        } catch (NoSuchAlgorithmException | KeyManagementException e) {
-            logger.warn("Failed to setup SSL context, using default: {}", e.getMessage());
-            // Fallback to default client
-            client = HttpClient.newBuilder()
-                .connectTimeout(java.time.Duration.ofSeconds(10))  // Reduced from 30s to 10s
-                .build();
+        // Use the JVM trust store and normal certificate/hostname validation.
+        this.httpClient = HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(10))
+            .build();
+    }
+
+    static String requireApiKey(String name, String value) {
+        if (value == null || value.trim().isEmpty()
+                || value.trim().toLowerCase(java.util.Locale.ROOT).startsWith("your_")) {
+            throw new IllegalStateException(name + " is not configured. Set it in .env or the process environment.");
         }
-        this.httpClient = client;
+        return value.trim();
     }
 
     /**
@@ -85,14 +59,8 @@ public class Translator {
     public String transcribeToEnglish(String audioFilePath) throws IOException {
         logger.info("Transcribing audio file using Groq Whisper: {}", audioFilePath);
         
-        // Check if API key is configured
-        if (GROQ_API_KEY.equals("YOUR_GROQ_API_KEY_HERE")) {
-            String errorMsg = "Groq API key not configured! Get your FREE key from https://console.groq.com/";
-            logger.error(errorMsg);
-            System.out.println("\n❌ " + errorMsg);
-            throw new IllegalStateException(errorMsg);
-        }
-        
+        String apiKey = requireApiKey("GROQ_API_KEY", GROQ_API_KEY);
+
         File audioFile = new File(audioFilePath);
         if (!audioFile.exists() || audioFile.length() == 0) {
             throw new IOException("Audio file is empty or does not exist");
@@ -146,7 +114,7 @@ public class Translator {
             // Create HTTP request
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(GROQ_WHISPER_ENDPOINT))
-                .header("Authorization", "Bearer " + GROQ_API_KEY)
+                .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(fullBody))
                 .timeout(java.time.Duration.ofSeconds(15))  // Reduced from 60s to 15s
@@ -214,6 +182,8 @@ public class Translator {
             return "";
         }
 
+        String apiKey = requireApiKey("OPENL_API_KEY", OPENL_API_KEY);
+
         logger.info("Translating to {}: {}", targetLangCode, englishText);
 
         try {
@@ -227,7 +197,7 @@ public class Translator {
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(TRANSLATE_ENDPOINT))
                 .header("Content-Type", "application/json")
-                .header("x-rapidapi-key", OPENL_API_KEY)
+                .header("x-rapidapi-key", apiKey)
                 .header("x-rapidapi-host", OPENL_HOST)
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
                 .timeout(java.time.Duration.ofSeconds(10))  // Reduced from 30s to 10s

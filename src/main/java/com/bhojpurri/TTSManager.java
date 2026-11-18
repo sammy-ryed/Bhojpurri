@@ -23,8 +23,7 @@ public class TTSManager {
     // ElevenLabs API Configuration (High Quality TTS)
     // Get your FREE API key from: https://elevenlabs.io/
     // Free tier: 10,000 characters/month with premium voices
-    private static final String ELEVENLABS_API_KEY = EnvLoader.get("ELEVENLABS_API_KEY",
-        "sk_db200f30e240c3696692703c78ee3c8b72296657d0f376ab"); // Replace with your key
+    private static final String ELEVENLABS_API_KEY = EnvLoader.get("ELEVENLABS_API_KEY", ""); // Replace with your key
     
     private static final String ELEVENLABS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech/";
     
@@ -110,7 +109,8 @@ public class TTSManager {
         String generatedFilePath = null;
 
         // Try ElevenLabs TTS first (high quality)
-        if (!ELEVENLABS_API_KEY.equals("YOUR_ELEVENLABS_API_KEY_HERE")) {
+        if (!ELEVENLABS_API_KEY.trim().isEmpty()
+                && !ELEVENLABS_API_KEY.toLowerCase(java.util.Locale.ROOT).startsWith("your_")) {
             System.out.println("🎙️ Trying ElevenLabs TTS (Premium Quality)...");
             logger.info("Trying ElevenLabs TTS");
             

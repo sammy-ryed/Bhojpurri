@@ -24,7 +24,7 @@ public class DatabaseManager {
     private static final String DB_URL = "jdbc:mysql://localhost:3306/";
     private static final String DB_NAME = "bhojpuri_billa";
     private static final String DB_USER = "root";
-    private static final String DB_PASSWORD = "kali";
+    private static final String DB_PASSWORD = EnvLoader.get("DB_PASSWORD", "");
     // Connection parameters for proper UTF-8 support
     private static final String CONNECTION_PARAMS = "?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true";
     

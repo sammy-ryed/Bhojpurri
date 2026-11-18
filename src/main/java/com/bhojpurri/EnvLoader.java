@@ -67,9 +67,9 @@ public class EnvLoader {
                     }
 
                     envVars.put(key, value);
-                    logger.debug("Loaded: {} = {}", key, maskValue(value));
+                    logger.debug("Loaded configuration entry: {}", key);
                 } else {
-                    logger.warn("Invalid line {} in .env file: {}", lineNumber, line);
+                    logger.warn("Invalid line {} in .env file", lineNumber);
                 }
             }
 
@@ -128,13 +128,4 @@ public class EnvLoader {
         return value != null && !value.isEmpty();
     }
 
-    /**
-     * Masks sensitive values for logging.
-     */
-    private static String maskValue(String value) {
-        if (value == null || value.length() <= 8) {
-            return "***";
-        }
-        return value.substring(0, 4) + "..." + value.substring(value.length() - 4);
-    }
 }

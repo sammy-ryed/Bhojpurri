@@ -111,20 +111,25 @@ DB_PASSWORD=your_mysql_password
 
 # API Keys
 GROQ_API_KEY=your_groq_api_key
+OPENL_API_KEY=your_openl_rapidapi_key
+# Optional: premium TTS, otherwise Google TTS fallback
+ELEVENLABS_API_KEY=
 ```
 
-**Note**: If `.env` file is not provided, the application will use default configuration values.
+**Note**: API keys are required for their respective operations. Set them in the local `.env` file or process environment; there are no embedded fallback keys. Never commit real credentials.
 
 #### API Key Setup
 
 1. **Groq API Key** (Required for speech transcription):
    - Sign up at: https://console.groq.com/
    - Generate an API key
-   - Add it to your `.env` file or the application will use the hardcoded fallback
+   - Add it as `GROQ_API_KEY` in your `.env` file or process environment
 
-2. **OpenL Translate API** (Pre-configured):
-   - The application includes a pre-configured API key
-   - For production use, obtain your own key from RapidAPI
+2. **OpenL Translate API** (Required for translation):
+   - Obtain your own OpenL Translate key from RapidAPI
+   - Set `OPENL_API_KEY` in your `.env` file or process environment
+
+Previously committed credentials must be revoked/replaced at their providers. Removing them from source does not revoke them or remove them from Git history. HTTPS uses the JVM trust store; fix trust-store/proxy configuration instead of disabling certificate validation.
 
 ## Installation
 
@@ -244,7 +249,7 @@ CREATE TABLE translations (
 - Ensure audio drivers are up to date
 
 **3. SSL Handshake Errors**
-- The application includes SSL certificate relaxation for API calls
+- The application validates certificates using the JVM trust store
 - If issues persist, check firewall settings
 
 **4. Maven Build Fails**
