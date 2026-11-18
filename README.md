@@ -249,7 +249,7 @@ CREATE TABLE translations (
 - Ensure audio drivers are up to date
 
 **3. SSL Handshake Errors**
-- The application includes SSL certificate relaxation for API calls
+- The application validates certificates using the JVM trust store
 - If issues persist, check firewall settings
 
 **4. Maven Build Fails**
